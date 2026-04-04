@@ -1,3 +1,31 @@
+Metadata-Version: 2.4
+Name: lint-xios-xml
+Version: 0.1.0
+Summary: XIOS XML configuration linter with Jinja2 template support
+Author-email: Jan Streffing <jan.streffing@awi.de>
+License-Expression: MIT
+Project-URL: Homepage, https://github.com/JanStreffing/lint-xios-xml
+Project-URL: Repository, https://github.com/JanStreffing/lint-xios-xml
+Project-URL: Issues, https://github.com/JanStreffing/lint-xios-xml/issues
+Keywords: xios,xml,linter,climate,earth-system-model
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Science/Research
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Atmospheric Science
+Classifier: Topic :: Software Development :: Quality Assurance
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: lxml
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+Dynamic: license-file
+
 # lint-xios-xml
 
 A linter for [XIOS](https://forge.ipsl.jussieu.fr/ioserver) XML configuration files, with Jinja2 template support.
