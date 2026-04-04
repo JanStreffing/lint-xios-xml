@@ -1,5 +1,0 @@
-lxml
-
-[dev]
-pytest
-pytest-cov

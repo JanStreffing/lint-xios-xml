@@ -1,2 +1,0 @@
-[console_scripts]
-lint-xios-xml = lint_xios_xml.cli:main
