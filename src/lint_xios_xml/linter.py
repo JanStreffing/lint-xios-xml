@@ -16,21 +16,7 @@ from pathlib import Path
 
 from lxml import etree
 
-from lint_xios_xml.schema import (
-    COMMON_ATTRS,
-    ELEMENT_ATTRS,
-    VALID_CALENDAR_TYPES,
-    VALID_CONVENTIONS,
-    VALID_DOMAIN_TYPES,
-    VALID_ELEMENTS,
-    VALID_FILE_FORMATS,
-    VALID_FILE_MODES,
-    VALID_FILE_TYPES,
-    VALID_OPERATIONS,
-    VALID_PAR_ACCESS,
-    VALID_POSITIVE,
-    VALID_TIMESERIES,
-)
+from lint_xios_xml.schemas import DEFAULT_VERSION, get_schema
 
 
 def preprocess_jinja(text):
@@ -73,9 +59,13 @@ class XiosLinter:
         Groups of filenames that are alternatives to each other (only one
         active at runtime). Duplicate ids between files in the same group
         are suppressed.
+    xios_version : str, optional
+        XIOS version to validate against (e.g. ``"2"`` or ``"3"``).
+        Defaults to ``"2"``.
     """
 
-    def __init__(self, alternative_groups=None):
+    def __init__(self, alternative_groups=None, xios_version=None):
+        self.schema = get_schema(xios_version or DEFAULT_VERSION)
         self.errors = []
         self.warnings = []
         self.ids = {}  # id -> (file, element_tag, line)
@@ -133,13 +123,14 @@ class XiosLinter:
         """Recursively validate an element and its children."""
         tag = element.tag
         line = element.sourceline or 0
+        schema = self.schema
 
         # Check element name
-        if tag not in VALID_ELEMENTS:
+        if tag not in schema.valid_elements:
             self.warn(filepath, line, f"Unknown element <{tag}>")
 
         # Check attributes
-        known_attrs = ELEMENT_ATTRS.get(tag, COMMON_ATTRS)
+        known_attrs = schema.element_attrs.get(tag, schema.common_attrs)
         for attr in element.attrib:
             if attr not in known_attrs:
                 self.warn(filepath, line, f"Unknown attribute '{attr}' on <{tag}>")
@@ -175,20 +166,20 @@ class XiosLinter:
                     self.refs.append((attr, ref_val, filepath, line, tag))
 
         # Validate enum attributes
-        self._check_enum(element, "operation", VALID_OPERATIONS, filepath, line, tag)
+        self._check_enum(element, "operation", schema.valid_operations, filepath, line, tag)
         if tag in ("file", "file_group"):
-            self._check_enum(element, "type", VALID_FILE_TYPES, filepath, line, tag)
-            self._check_enum(element, "format", VALID_FILE_FORMATS, filepath, line, tag)
-            self._check_enum(element, "mode", VALID_FILE_MODES, filepath, line, tag)
-            self._check_enum(element, "par_access", VALID_PAR_ACCESS, filepath, line, tag)
-            self._check_enum(element, "timeseries", VALID_TIMESERIES, filepath, line, tag)
-            self._check_enum(element, "convention", VALID_CONVENTIONS, filepath, line, tag)
+            self._check_enum(element, "type", schema.valid_file_types, filepath, line, tag)
+            self._check_enum(element, "format", schema.valid_file_formats, filepath, line, tag)
+            self._check_enum(element, "mode", schema.valid_file_modes, filepath, line, tag)
+            self._check_enum(element, "par_access", schema.valid_par_access, filepath, line, tag)
+            self._check_enum(element, "timeseries", schema.valid_timeseries, filepath, line, tag)
+            self._check_enum(element, "convention", schema.valid_conventions, filepath, line, tag)
         if tag == "calendar":
-            self._check_enum(element, "type", VALID_CALENDAR_TYPES, filepath, line, tag)
+            self._check_enum(element, "type", schema.valid_calendar_types, filepath, line, tag)
         if tag in ("domain", "domain_group"):
-            self._check_enum(element, "type", VALID_DOMAIN_TYPES, filepath, line, tag)
+            self._check_enum(element, "type", schema.valid_domain_types, filepath, line, tag)
         if tag in ("axis", "axis_group"):
-            self._check_enum(element, "positive", VALID_POSITIVE, filepath, line, tag)
+            self._check_enum(element, "positive", schema.valid_positive, filepath, line, tag)
 
         # Check fields in field_definition have an id
         if tag == "field":

@@ -1,4 +1,8 @@
-"""XIOS element/attribute schema definitions (from XIOS User Guide + Reference)."""
+"""XIOS 2.x schema definitions (from XIOS 2 User Guide + Reference)."""
+
+from lint_xios_xml.schemas import XiosSchema, register
+
+COMMON_ATTRS = {"id", "name", "enabled", "src", "description", "comment"}
 
 VALID_ELEMENTS = {
     # Top-level
@@ -47,10 +51,6 @@ VALID_ELEMENTS = {
     "reorder_domain",
 }
 
-# Common attributes that can appear on most elements
-COMMON_ATTRS = {"id", "name", "enabled", "src", "description", "comment"}
-
-# Attributes valid per element type
 ELEMENT_ATTRS = {
     "simulation": COMMON_ATTRS,
     "context": COMMON_ATTRS | {"type", "calendar_type"},
@@ -157,22 +157,28 @@ ELEMENT_ATTRS = {
     "reorder_domain": COMMON_ATTRS | {"invert_lat"},
 }
 
-# Enum constraints
-VALID_OPERATIONS = {"instant", "average", "accumulate", "minimum", "maximum", "once"}
-VALID_FILE_TYPES = {"one_file", "multiple_file"}
-VALID_FILE_FORMATS = {"netcdf4", "netcdf4_classic"}
-VALID_FILE_MODES = {"write", "read"}
-VALID_PAR_ACCESS = {"collective", "independent"}
-VALID_CALENDAR_TYPES = {
-    "Gregorian", "Julian", "NoLeap", "AllLeap", "D360",
-    "user_defined",
-    # case-insensitive aliases
-    "gregorian", "julian", "noleap", "allleap", "d360",
-}
-VALID_TIMESERIES = {"none", "only", "both", "exclusive"}
-VALID_CONVENTIONS = {"CF", "UGRID"}
-VALID_DOMAIN_TYPES = {
-    "rectilinear", "curvilinear", "unstructured",
-    "gaussian", "gaussian_reduced",
-}
-VALID_POSITIVE = {"up", "down"}
+SCHEMA = XiosSchema(
+    version="2",
+    valid_elements=VALID_ELEMENTS,
+    common_attrs=COMMON_ATTRS,
+    element_attrs=ELEMENT_ATTRS,
+    valid_operations={"instant", "average", "accumulate", "minimum", "maximum", "once"},
+    valid_file_types={"one_file", "multiple_file"},
+    valid_file_formats={"netcdf4", "netcdf4_classic"},
+    valid_file_modes={"write", "read"},
+    valid_par_access={"collective", "independent"},
+    valid_calendar_types={
+        "Gregorian", "Julian", "NoLeap", "AllLeap", "D360",
+        "user_defined",
+        "gregorian", "julian", "noleap", "allleap", "d360",
+    },
+    valid_timeseries={"none", "only", "both", "exclusive"},
+    valid_conventions={"CF", "UGRID"},
+    valid_domain_types={
+        "rectilinear", "curvilinear", "unstructured",
+        "gaussian", "gaussian_reduced",
+    },
+    valid_positive={"up", "down"},
+)
+
+register(SCHEMA)

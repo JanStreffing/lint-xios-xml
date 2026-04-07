@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from lint_xios_xml.linter import XiosLinter, preprocess_jinja
+from lint_xios_xml.schemas import get_schema, list_versions
 
 
 @pytest.fixture
@@ -197,3 +198,86 @@ class TestFieldChecks:
             '<field_definition><field long_name="oops" /></field_definition>'
         ))
         assert any("should have 'id'" in w for w in linter.warnings)
+
+
+# -------------------------------------------------------------------
+# Version-aware tests
+# -------------------------------------------------------------------
+
+class TestVersionRegistry:
+    def test_list_versions(self):
+        versions = list_versions()
+        assert "2" in versions
+        assert "3" in versions
+
+    def test_get_schema_valid(self):
+        schema = get_schema("2")
+        assert schema.version == "2"
+        assert "field" in schema.valid_elements
+
+    def test_get_schema_invalid(self):
+        with pytest.raises(ValueError, match="Unknown XIOS version"):
+            get_schema("999")
+
+    def test_default_version_is_xios2(self, tmp_xml):
+        linter = XiosLinter()
+        assert linter.schema.version == "2"
+
+
+class TestXios2Schema:
+    def test_xios2_rejects_xios3_element(self, tmp_xml):
+        """Elements added in XIOS 3 should warn under XIOS 2."""
+        linter = XiosLinter(xios_version="2")
+        linter.lint_file(tmp_xml("<simulation><pool /></simulation>"))
+        assert any("Unknown element <pool>" in w for w in linter.warnings)
+
+    def test_xios2_knows_zoom_domain(self, tmp_xml):
+        linter = XiosLinter(xios_version="2")
+        linter.lint_file(tmp_xml(
+            '<grid_definition><grid id="g"><zoom_domain /></grid></grid_definition>'
+        ))
+        assert not any("Unknown element <zoom_domain>" in w for w in linter.warnings)
+
+
+class TestXios3Schema:
+    def test_xios3_accepts_pool(self, tmp_xml):
+        """<pool> is valid in XIOS 3."""
+        linter = XiosLinter(xios_version="3")
+        linter.lint_file(tmp_xml("<simulation><pool /></simulation>"))
+        assert not any("Unknown element <pool>" in w for w in linter.warnings)
+
+    def test_xios3_accepts_service(self, tmp_xml):
+        """<service> and <services> are valid in XIOS 3."""
+        linter = XiosLinter(xios_version="3")
+        linter.lint_file(tmp_xml(
+            "<simulation><services><service /></services></simulation>"
+        ))
+        assert not any("Unknown element" in w for w in linter.warnings)
+
+    def test_xios3_still_validates_xios2_elements(self, tmp_xml):
+        """XIOS 3 should still validate all XIOS 2 elements correctly."""
+        linter = XiosLinter(xios_version="3")
+        linter.lint_file(tmp_xml(
+            '<field_definition><field id="x" operation="average" /></field_definition>'
+        ))
+        assert len(linter.errors) == 0
+        assert len(linter.warnings) == 0
+
+    def test_xios3_context_attached_mode(self, tmp_xml):
+        """context should accept attached_mode in XIOS 3."""
+        linter = XiosLinter(xios_version="3")
+        linter.lint_file(tmp_xml('<context id="c" attached_mode="true" />'))
+        assert not any("Unknown attribute 'attached_mode'" in w for w in linter.warnings)
+
+    def test_xios2_rejects_attached_mode(self, tmp_xml):
+        """context should NOT accept attached_mode in XIOS 2."""
+        linter = XiosLinter(xios_version="2")
+        linter.lint_file(tmp_xml('<context id="c" attached_mode="true" />'))
+        assert any("Unknown attribute 'attached_mode'" in w for w in linter.warnings)
+
+
+class TestExplicitVersion:
+    def test_explicit_version_parameter(self, tmp_xml):
+        """XiosLinter should use the specified version."""
+        linter = XiosLinter(xios_version="3")
+        assert linter.schema.version == "3"
