@@ -1,6 +1,6 @@
 """XIOS 2.x schema definitions (from XIOS 2 User Guide + Reference)."""
 
-from lint_xios_xml.schemas import XiosSchema, register
+from lint_xios_xml.schemas import KNOWN_VARIABLE_IDS, XiosSchema, register
 
 COMMON_ATTRS = {"id", "name", "enabled", "src", "description", "comment"}
 
@@ -92,8 +92,19 @@ ELEMENT_ATTRS = {
         "compression_level", "name_suffix",
         "min_digits", "record_offset",
         "cyclic",
+        "time_counter", "time_counter_name",
     },
-    "file_definition": COMMON_ATTRS,
+    # ``file_definition`` accepts the inheritable defaults that cascade to its
+    # child ``<file>`` and ``<file_group>`` elements.
+    "file_definition": COMMON_ATTRS | {
+        "output_freq", "output_level", "split_freq", "split_freq_format",
+        "sync_freq", "type", "format", "par_access",
+        "mode", "append", "convention",
+        "timeseries", "ts_prefix",
+        "compression_level", "name_suffix",
+        "min_digits", "record_offset", "cyclic",
+        "time_counter", "time_counter_name",
+    },
     "file_group": COMMON_ATTRS | {
         "output_freq", "output_level", "split_freq", "split_freq_format",
         "sync_freq", "type", "format", "par_access",
@@ -101,6 +112,7 @@ ELEMENT_ATTRS = {
         "timeseries", "ts_prefix",
         "compression_level", "name_suffix",
         "min_digits",
+        "time_counter", "time_counter_name",
     },
     "grid": COMMON_ATTRS | {"grid_ref"},
     "grid_definition": COMMON_ATTRS,
@@ -113,6 +125,9 @@ ELEMENT_ATTRS = {
         "bounds_lon_1d", "bounds_lat_1d", "bounds_lon_2d", "bounds_lat_2d",
         "i_index", "j_index", "data_i_index", "data_j_index",
         "nvertex", "area",
+        # output-dimension name overrides (used by FESOM etc. to keep legacy
+        # unstructured dim names like ``nod2``/``elem``)
+        "dim_i_name", "dim_j_name",
     },
     "domain_definition": COMMON_ATTRS,
     "domain_group": COMMON_ATTRS | {"type", "long_name"},
@@ -120,10 +135,13 @@ ELEMENT_ATTRS = {
         "axis_ref", "long_name", "standard_name", "unit",
         "positive", "n_glo", "value", "bounds", "label",
         "index", "begin", "n", "data_begin", "data_n", "data_index",
-        "prec",
+        "prec", "axis_type",
     },
     "axis_definition": COMMON_ATTRS,
-    "axis_group": COMMON_ATTRS | {"unit", "positive", "long_name", "standard_name"},
+    "axis_group": COMMON_ATTRS | {
+        "unit", "positive", "long_name", "standard_name",
+        "axis_type",
+    },
     "variable": COMMON_ATTRS | {"type"},
     "variable_definition": COMMON_ATTRS,
     "variable_group": COMMON_ATTRS,
@@ -179,6 +197,7 @@ SCHEMA = XiosSchema(
         "gaussian", "gaussian_reduced",
     },
     valid_positive={"up", "down"},
+    known_variable_ids=KNOWN_VARIABLE_IDS,
 )
 
 register(SCHEMA)

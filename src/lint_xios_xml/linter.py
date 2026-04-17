@@ -181,6 +181,25 @@ class XiosLinter:
         if tag in ("axis", "axis_group"):
             self._check_enum(element, "positive", schema.valid_positive, filepath, line, tag)
 
+        # Version-gate check for well-known <variable id="..."> tokens
+        # inside <variable_definition> / <variable_group>.
+        if tag == "variable":
+            vid = element.get("id")
+            gate = schema.known_variable_ids.get(vid) if vid else None
+            if gate is not None:
+                valid = gate.get("valid_versions")
+                if valid and schema.version not in valid:
+                    valid_str = ", ".join(sorted(valid))
+                    msg = (
+                        f"<variable id='{vid}'> is valid in XIOS "
+                        f"{valid_str}, not XIOS {schema.version}"
+                    )
+                    if "renamed_to" in gate:
+                        msg += f"; in XIOS {schema.version} use '{gate['renamed_to']}'"
+                    elif "renamed_from" in gate:
+                        msg += f" (renamed from '{gate['renamed_from']}')"
+                    self.warn(filepath, line, msg)
+
         # Check fields in field_definition have an id
         if tag == "field":
             has_field_ref = "field_ref" in element.attrib

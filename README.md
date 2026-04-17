@@ -13,6 +13,7 @@ Catches common configuration mistakes before they cause cryptic runtime failures
 5. **Required attributes** (e.g. `<field>` in `field_definition` should have `id`)
 6. **Enum validation** (`operation`, `type`, `format`, `par_access`, `timeseries`, `positive`, ...)
 7. **Duplicate id detection** (with support for alternative file sets)
+8. **Version-gated `<variable id>` tokens** — well-known ids (e.g. `oasis_codes_id` / `clients_code_id`, `call_oasis_enddef`) warn when used under the wrong `--xios-version`, with a rename hint pointing at the replacement.
 
 ## Installation
 
