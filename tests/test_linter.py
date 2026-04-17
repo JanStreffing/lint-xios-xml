@@ -281,3 +281,109 @@ class TestExplicitVersion:
         """XiosLinter should use the specified version."""
         linter = XiosLinter(xios_version="3")
         assert linter.schema.version == "3"
+
+
+class TestVariableVersionGate:
+    """Well-known ``<variable id="...">`` tokens get per-version warnings."""
+
+    def _iodef(self, var_id):
+        return (
+            "<simulation><context id=\"xios\"><variable_definition>"
+            f"<variable id=\"{var_id}\" type=\"string\">v</variable>"
+            "</variable_definition></context></simulation>"
+        )
+
+    def test_oasis_codes_id_warns_on_xios3(self, tmp_xml):
+        linter = XiosLinter(xios_version="3")
+        linter.lint_file(tmp_xml(self._iodef("oasis_codes_id")))
+        assert any(
+            "oasis_codes_id" in w
+            and "clients_code_id" in w
+            and "XIOS 3" in w
+            for w in linter.warnings
+        )
+
+    def test_oasis_codes_id_ok_on_xios2(self, tmp_xml):
+        linter = XiosLinter(xios_version="2")
+        linter.lint_file(tmp_xml(self._iodef("oasis_codes_id")))
+        assert not any("oasis_codes_id" in w for w in linter.warnings)
+
+    def test_clients_code_id_warns_on_xios2(self, tmp_xml):
+        linter = XiosLinter(xios_version="2")
+        linter.lint_file(tmp_xml(self._iodef("clients_code_id")))
+        assert any(
+            "clients_code_id" in w
+            and "oasis_codes_id" in w
+            for w in linter.warnings
+        )
+
+    def test_clients_code_id_ok_on_xios3(self, tmp_xml):
+        linter = XiosLinter(xios_version="3")
+        linter.lint_file(tmp_xml(self._iodef("clients_code_id")))
+        assert not any("clients_code_id" in w for w in linter.warnings)
+
+    def test_call_oasis_enddef_only_xios3(self, tmp_xml):
+        linter2 = XiosLinter(xios_version="2")
+        linter2.lint_file(tmp_xml(self._iodef("call_oasis_enddef")))
+        assert any("call_oasis_enddef" in w for w in linter2.warnings)
+
+        linter3 = XiosLinter(xios_version="3")
+        linter3.lint_file(tmp_xml(self._iodef("call_oasis_enddef")))
+        assert not any("call_oasis_enddef" in w for w in linter3.warnings)
+
+    def test_unknown_variable_id_ignored(self, tmp_xml):
+        """Ids not in the registry are not flagged."""
+        linter = XiosLinter(xios_version="2")
+        linter.lint_file(tmp_xml(self._iodef("using_server")))
+        assert not any("using_server" in w for w in linter.warnings)
+
+
+class TestSchemaFills:
+    """New attributes/elements accepted after schema backfill."""
+
+    def test_axis_group_axis_type(self, tmp_xml):
+        linter = XiosLinter()
+        linter.lint_file(tmp_xml(
+            '<axis_definition><axis_group axis_type="Z"><axis id="a" /></axis_group></axis_definition>'
+        ))
+        assert not any("axis_type" in w for w in linter.warnings)
+
+    def test_domain_dim_i_name(self, tmp_xml):
+        linter = XiosLinter()
+        linter.lint_file(tmp_xml(
+            '<domain_definition><domain id="d" dim_i_name="nod2" /></domain_definition>'
+        ))
+        assert not any("dim_i_name" in w for w in linter.warnings)
+
+    def test_file_definition_inherits_file_attrs(self, tmp_xml):
+        linter = XiosLinter()
+        linter.lint_file(tmp_xml(
+            '<file_definition type="one_file" format="netcdf4" par_access="collective"'
+            ' compression_level="1" time_counter="exclusive" time_counter_name="time">'
+            '<file output_freq="1mo" /></file_definition>'
+        ))
+        assert not any(
+            any(a in w for a in ("type", "format", "par_access",
+                                 "compression_level", "time_counter"))
+            for w in linter.warnings
+        )
+
+    def test_xios3_extract_axis(self, tmp_xml):
+        linter = XiosLinter(xios_version="3")
+        linter.lint_file(tmp_xml(
+            '<axis_definition><axis id="a">'
+            '<extract_axis index="(0,1)[0 2]" />'
+            '</axis></axis_definition>'
+        ))
+        assert not any("extract_axis" in w for w in linter.warnings)
+
+    def test_xios3_file_service_routing_attrs(self, tmp_xml):
+        linter = XiosLinter(xios_version="3")
+        linter.lint_file(tmp_xml(
+            '<file_definition><file output_freq="1h" writer="srv_w"'
+            ' gatherer="srv_g" using_server2="true" /></file_definition>'
+        ))
+        assert not any(
+            any(a in w for a in ("writer", "gatherer", "using_server2"))
+            for w in linter.warnings
+        )

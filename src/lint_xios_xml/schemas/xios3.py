@@ -9,12 +9,13 @@ simple as adding a string to the relevant set.
 
 import copy
 
-from lint_xios_xml.schemas import XiosSchema, register
+from lint_xios_xml.schemas import KNOWN_VARIABLE_IDS, XiosSchema, register
 from lint_xios_xml.schemas.xios2 import SCHEMA as XIOS2_SCHEMA
 
 # Start from a deep copy of XIOS 2
 SCHEMA = copy.deepcopy(XIOS2_SCHEMA)
 SCHEMA.version = "3"
+SCHEMA.known_variable_ids = KNOWN_VARIABLE_IDS
 
 # -------------------------------------------------------------------
 # New elements in XIOS 3
@@ -31,6 +32,7 @@ SCHEMA.valid_elements |= {
     "compute_connectivity_domain",
     "expand_domain",
     "extract_domain",
+    "extract_axis",
     "redistribute",
 }
 
@@ -68,16 +70,22 @@ SCHEMA.element_attrs["expand_domain"] = SCHEMA.common_attrs | {
 SCHEMA.element_attrs["extract_domain"] = SCHEMA.common_attrs | {
     "ibegin", "ni", "jbegin", "nj",
 }
+SCHEMA.element_attrs["extract_axis"] = SCHEMA.common_attrs | {
+    "begin", "n", "index",
+}
 SCHEMA.element_attrs["redistribute"] = SCHEMA.common_attrs
 
 # file element gained new attributes in XIOS 3
 SCHEMA.element_attrs["file"] |= {
     "time_stamp_name", "time_stamp_format",
     "uuid_name", "uuid_format",
+    # Service/pool routing for the redesigned XIOS 3 server
+    "reader", "writer", "gatherer", "using_server2",
 }
 SCHEMA.element_attrs["file_group"] |= {
     "time_stamp_name", "time_stamp_format",
     "uuid_name", "uuid_format",
+    "reader", "writer", "gatherer", "using_server2",
 }
 
 register(SCHEMA)

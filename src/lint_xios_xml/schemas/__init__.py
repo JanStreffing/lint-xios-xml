@@ -5,7 +5,7 @@ Use ``get_schema(version)`` to obtain the schema for a specific version.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Set
+from typing import Any, Dict, Set
 
 
 @dataclass
@@ -34,6 +34,39 @@ class XiosSchema:
     valid_conventions: Set[str] = field(default_factory=set)
     valid_domain_types: Set[str] = field(default_factory=set)
     valid_positive: Set[str] = field(default_factory=set)
+
+    # Known XIOS <variable id="..."> tokens inside <variable_definition>,
+    # keyed by id. Each entry may have:
+    #   ``valid_versions``: set of XIOS versions in which the id is valid
+    #   ``renamed_to``:     id name in a later version (shown in warnings)
+    #   ``renamed_from``:   id name in an earlier version
+    #
+    # The linter warns when a file lints under a version whose id is
+    # present in this registry but absent from ``valid_versions``.
+    known_variable_ids: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Shared registry of version-gated <variable id="..."> tokens
+# ---------------------------------------------------------------------------
+
+# Populated into every schema's ``known_variable_ids`` below. Each value may
+# carry ``valid_versions``, ``renamed_to``, ``renamed_from``.
+KNOWN_VARIABLE_IDS: Dict[str, Dict[str, Any]] = {
+    # --- XIOS 2 / XIOS 3 OASIS identifier rename ---
+    "oasis_codes_id": {
+        "valid_versions": {"2"},
+        "renamed_to": "clients_code_id",
+    },
+    "clients_code_id": {
+        "valid_versions": {"3"},
+        "renamed_from": "oasis_codes_id",
+    },
+    # --- XIOS 3-only additions ---
+    "call_oasis_enddef": {
+        "valid_versions": {"3"},
+    },
+}
 
 
 # ---------------------------------------------------------------------------
