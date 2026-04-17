@@ -19,18 +19,110 @@ from lxml import etree
 from lint_xios_xml.schemas import DEFAULT_VERSION, get_schema
 
 
-def preprocess_jinja(text):
-    """Replace Jinja2 template expressions with XML-safe placeholders.
+# Placeholder string substituted for template expressions that cannot be
+# resolved to a concrete value. Kept identical to the pre-Jinja2-rendering
+# behavior so downstream checks that look for this marker keep working.
+_JINJA_PLACEHOLDER = "JINJA_PLACEHOLDER"
 
-    Handles three Jinja2 constructs:
-      - ``{{ expression }}`` -> replaced with ``JINJA_PLACEHOLDER``
-      - ``{% block %}``      -> stripped
-      - ``{# comment #}``   -> stripped
+
+class _SilentUndefined:
+    """Stand-in returned for every undefined name / attribute access.
+
+    Renders to the linter's ``JINJA_PLACEHOLDER`` sentinel, supports any
+    attribute access (``foo.bar.baz``) and indexing (``foo[0]``), is
+    callable (so ``{{ x.startswith('3') }}`` in an ``{% if %}`` returns a
+    truthy placeholder), and evaluates as falsy in boolean context so
+    branches guarded by ``{% if undefined %}`` are skipped rather than
+    crashing the template.
     """
-    text = re.sub(r"\{\{[^}]*\}\}", "JINJA_PLACEHOLDER", text)
-    text = re.sub(r"\{%[^%]*%\}", "", text)
-    text = re.sub(r"\{#[^#]*#\}", "", text)
-    return text
+
+    def __getattr__(self, _name):  # any attribute path resolves to self
+        return self
+
+    def __getitem__(self, _key):
+        return self
+
+    def __call__(self, *_args, **_kwargs):
+        # String methods like .startswith() return a string; other calls
+        # stay as the placeholder object.
+        return self
+
+    def __bool__(self):
+        return False
+
+    def __iter__(self):
+        return iter(())
+
+    def __str__(self):
+        return _JINJA_PLACEHOLDER
+
+    def __repr__(self):
+        return _JINJA_PLACEHOLDER
+
+
+def preprocess_jinja(text, variables=None):
+    """Prepare a Jinja2 template for XML parsing.
+
+    Two modes:
+
+    * **No ``variables``** (default): legacy regex-based stripping is used.
+      ``{{ expr }}`` → ``JINJA_PLACEHOLDER``, ``{% block %}`` and
+      ``{# comment #}`` are removed. Both branches of an ``{% if %}`` end
+      up in the output.
+    * **``variables`` given**: a real Jinja2 ``Environment`` renders the
+      template with that context. Conditional blocks collapse to the
+      branch that matches the provided variables. Undefined names are
+      caught by a permissive ``Undefined`` subclass that stringifies to
+      ``JINJA_PLACEHOLDER`` instead of crashing, so templates with
+      unresolved ``{{ foo.bar }}`` still lint.
+    """
+    if not variables:
+        text = re.sub(r"\{\{[^}]*\}\}", _JINJA_PLACEHOLDER, text)
+        text = re.sub(r"\{%[^%]*%\}", "", text)
+        text = re.sub(r"\{#[^#]*#\}", "", text)
+        return text
+
+    # Lazy import: Jinja2 is a runtime dep, but unused code paths
+    # shouldn't pay for it.
+    from jinja2 import Environment, Undefined
+
+    class _PermissiveUndefined(Undefined):
+        """Jinja2 ``Undefined`` that silently stringifies to the
+        placeholder and is falsy / iterable-empty. Attribute access and
+        indexing return another instance instead of raising, so
+        ``{{ a.b.c }}`` works even when ``a`` is undefined.
+        """
+
+        __slots__ = ()
+
+        def __getattr__(self, _name):
+            return self.__class__()
+
+        def __getitem__(self, _key):
+            return self.__class__()
+
+        def __call__(self, *_args, **_kwargs):
+            return self.__class__()
+
+        def __bool__(self):
+            return False
+
+        def __iter__(self):
+            return iter(())
+
+        def __str__(self):
+            return _JINJA_PLACEHOLDER
+
+        def __repr__(self):
+            return _JINJA_PLACEHOLDER
+
+    env = Environment(
+        undefined=_PermissiveUndefined,
+        keep_trailing_newline=True,
+        autoescape=False,
+    )
+    template = env.from_string(text)
+    return template.render(**variables)
 
 
 def collect_files(paths):
@@ -62,10 +154,18 @@ class XiosLinter:
     xios_version : str, optional
         XIOS version to validate against (e.g. ``"2"`` or ``"3"``).
         Defaults to ``"2"``.
+    jinja_vars : dict, optional
+        Variables passed to the Jinja2 renderer when linting ``.xml.j2``
+        files. When provided, conditional blocks collapse to the matching
+        branch instead of preserving both, which is what lets a unified
+        multi-version template lint cleanly under a specific XIOS
+        version. When omitted, the legacy regex-based stripping is used.
     """
 
-    def __init__(self, alternative_groups=None, xios_version=None):
+    def __init__(self, alternative_groups=None, xios_version=None,
+                 jinja_vars=None):
         self.schema = get_schema(xios_version or DEFAULT_VERSION)
+        self.jinja_vars = jinja_vars or None
         self.errors = []
         self.warnings = []
         self.ids = {}  # id -> (file, element_tag, line)
@@ -109,7 +209,7 @@ class XiosLinter:
             return
 
         if is_jinja:
-            text = preprocess_jinja(text)
+            text = preprocess_jinja(text, variables=self.jinja_vars)
 
         try:
             tree = etree.fromstring(text.encode("utf-8"))
