@@ -55,12 +55,26 @@ Each file in the group is still fully linted individually for structure, enums, 
 
 ### Jinja2 templates
 
-Files with `.xml.j2` extension are automatically preprocessed:
+Files with `.xml.j2` extension are automatically preprocessed. There are two modes:
+
+**Without `--define`** (default, lightweight):
 - `{{ expression }}` is replaced with a safe placeholder
-- `{% block %}` statements are stripped
+- `{% block %}` statements are stripped — both branches of an `{% if %}/{% else %}` remain
 - `{# comments #}` are stripped
 
-This allows structural validation of Jinja2 templates used by tools like [esm-tools](https://github.com/esm-tools/esm_tools).
+**With `--define KEY=VALUE`** (full Jinja2 render):
+- The template is rendered with the provided variables; conditional blocks collapse to the matching branch.
+- Dotted keys build nested dicts: `--define xios.version=3.0` makes `{{ xios.version }}` render as `3.0` and `{% if xios.version.startswith("3") %}` pick the XIOS 3 branch.
+- Undefined names (e.g. `{{ unknown.thing }}`) resolve to the placeholder instead of crashing the template.
+- `--xios-version 2` / `--xios-version 3` auto-seed `xios.version` to `"2.5"` / `"3.0"` unless overridden by an explicit `--define xios.version=…`.
+
+This is what makes version-unified `iodef.xml.j2` files lint cleanly under a specific XIOS version.
+
+Example:
+```bash
+# Lint a unified multi-version iodef template as XIOS 3
+lint-xios-xml --xios-version 3 --define xios.version=3.0 iodef.xml.j2
+```
 
 ### `src=` inclusions
 

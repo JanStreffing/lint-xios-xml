@@ -29,6 +29,150 @@ class TestPreprocessJinja:
     def test_comment_stripped(self):
         assert "{#" not in preprocess_jinja("{# a comment #}")
 
+    def test_no_vars_preserves_both_if_branches(self):
+        """Backward-compat: without vars, regex strips {% %} and both
+        branches remain."""
+        out = preprocess_jinja(
+            "{% if x %}A{% else %}B{% endif %}"
+        )
+        assert "A" in out and "B" in out
+
+
+class TestJinja2Rendering:
+    """Full Jinja2 rendering is activated when ``variables`` is provided."""
+
+    def test_if_branch_selected_xios3(self):
+        out = preprocess_jinja(
+            "{% if xios.version.startswith('3') %}X3{% else %}X2{% endif %}",
+            variables={"xios": {"version": "3.0"}},
+        )
+        assert "X3" in out and "X2" not in out
+
+    def test_if_branch_selected_xios2(self):
+        out = preprocess_jinja(
+            "{% if xios.version.startswith('3') %}X3{% else %}X2{% endif %}",
+            variables={"xios": {"version": "2.5"}},
+        )
+        assert "X2" in out and "X3" not in out
+
+    def test_undefined_variable_becomes_placeholder(self):
+        """Undefined names must not crash — they resolve to JINJA_PLACEHOLDER."""
+        out = preprocess_jinja(
+            "value={{ undefined_var }}",
+            variables={"xios": {"version": "3.0"}},
+        )
+        assert "JINJA_PLACEHOLDER" in out
+
+    def test_undefined_nested_access_ok(self):
+        out = preprocess_jinja(
+            "value={{ a.b.c.d }}",
+            variables={"xios": {"version": "3.0"}},
+        )
+        assert "JINJA_PLACEHOLDER" in out
+
+    def test_undefined_in_if_is_falsy(self):
+        """{% if undefined %} takes the else branch, not a crash."""
+        out = preprocess_jinja(
+            "{% if missing_thing %}A{% else %}B{% endif %}",
+            variables={"xios": {"version": "3.0"}},
+        )
+        assert "B" in out and "A" not in out
+
+    def test_linter_with_jinja_vars_picks_xios3_branch(self, tmp_xml):
+        """End-to-end: linter with jinja_vars sees only the chosen branch,
+        so a unified iodef template lints cleanly under the right version."""
+        content = (
+            '<simulation><context id="xios"><variable_definition>'
+            '<variable_group id="parameters">'
+            '{% if xios.version.startswith("3") %}'
+            '<variable id="clients_code_id" type="string">OpenIFS</variable>'
+            '{% else %}'
+            '<variable id="oasis_codes_id" type="string">OpenIFS</variable>'
+            '{% endif %}'
+            '</variable_group>'
+            '</variable_definition></context></simulation>'
+        )
+        linter = XiosLinter(
+            xios_version="3",
+            jinja_vars={"xios": {"version": "3.0"}},
+        )
+        linter.lint_file(tmp_xml(content, name="iodef.xml.j2"))
+        assert not any("oasis_codes_id" in w for w in linter.warnings)
+        assert not any("clients_code_id" in w for w in linter.warnings)
+
+    def test_linter_without_jinja_vars_preserves_both_branches(self, tmp_xml):
+        """Backward-compat: no jinja_vars → both branches survive in the parse tree."""
+        content = (
+            '<simulation><context id="xios"><variable_definition>'
+            '{% if xios.version.startswith("3") %}'
+            '<variable_group id="grp_3"></variable_group>'
+            '{% else %}'
+            '<variable_group id="grp_2"></variable_group>'
+            '{% endif %}'
+            '</variable_definition></context></simulation>'
+        )
+        linter = XiosLinter()
+        linter.lint_file(tmp_xml(content, name="iodef.xml.j2"))
+        # Both ids present → ``{% %}`` strip left both branches intact.
+        assert "grp_3" in linter.ids and "grp_2" in linter.ids
+
+
+class TestCliDefine:
+    """CLI ``--define`` flag builds nested dicts for Jinja2 rendering."""
+
+    def test_parse_defines_nested(self):
+        from lint_xios_xml.cli import _parse_defines
+        out = _parse_defines(["xios.version=3.0", "oifs.resolution=TCO95"])
+        assert out == {"xios": {"version": "3.0"},
+                       "oifs": {"resolution": "TCO95"}}
+
+    def test_parse_defines_requires_equals(self):
+        from lint_xios_xml.cli import _parse_defines
+        with pytest.raises(SystemExit):
+            _parse_defines(["no_equals_here"])
+
+    def test_cli_define_selects_branch(self, tmp_path):
+        """Full CLI path: --define xios.version=3.0 picks the XIOS 3 branch."""
+        import sys
+
+        f = tmp_path / "iodef.xml.j2"
+        f.write_text(
+            '<simulation><context id="xios"><variable_definition>'
+            '<variable_group id="p">'
+            '{% if xios.version.startswith("3") %}'
+            '<variable id="clients_code_id" type="string">x</variable>'
+            '{% else %}'
+            '<variable id="oasis_codes_id" type="string">x</variable>'
+            '{% endif %}'
+            '</variable_group>'
+            '</variable_definition></context></simulation>'
+        )
+
+        from lint_xios_xml import cli as cli_mod
+        import io
+        import contextlib
+
+        buf = io.StringIO()
+        old_argv = sys.argv
+        try:
+            sys.argv = [
+                "lint-xios-xml", "--xios-version", "3",
+                "--define", "xios.version=3.0",
+                str(f),
+            ]
+            with contextlib.redirect_stdout(buf):
+                code = cli_mod.main()
+        finally:
+            sys.argv = old_argv
+
+        out = buf.getvalue()
+        # Should not flag either variable as cross-version — only the
+        # XIOS 3 branch survives the render.
+        assert "oasis_codes_id" not in out
+        assert "clients_code_id" not in out
+        # A clean XIOS 3 template of this shape should lint cleanly.
+        assert code == 0
+
 
 class TestWellFormedXML:
     def test_valid_xml(self, tmp_xml):
